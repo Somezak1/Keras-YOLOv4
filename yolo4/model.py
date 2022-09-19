@@ -310,13 +310,17 @@ def preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_
                        5 + num_classes)) for i in range(3)]
     bboxes_xywh = [np.zeros((max_bbox_per_scale, 4)) for _ in range(3)]
     bbox_count = np.zeros((3,))
-    for bbox in bboxes:
-        bbox_coor = bbox[:4]
-        bbox_class_ind = bbox[4]
+    for bbox in bboxes:  # bbox中的坐标是真实框相对于输入尺寸而言的
+        bbox_coor = bbox[:4]      # （4，）
+        bbox_class_ind = bbox[4]  # （4，）
         onehot = np.zeros(num_classes, dtype=np.float)
         onehot[bbox_class_ind] = 1.0
-        bbox_xywh = np.concatenate([(bbox_coor[2:] + bbox_coor[:2]) * 0.5, bbox_coor[2:] - bbox_coor[:2]], axis=-1)
+        bbox_xywh = np.concatenate([(bbox_coor[2:] + bbox_coor[:2]) * 0.5, bbox_coor[2:] - bbox_coor[:2]], axis=-1) # （4，）
+        # 将坐标xywh化作各自特征图尺寸上的坐标，比如特征图13*13中的中点坐标6.5
+        # 得到（3,4）的矩阵，对应真实框分别在三个输出特征图上的坐标
         bbox_xywh_scaled = 1.0 * bbox_xywh[np.newaxis, :] / strides[:, np.newaxis]
+
+        # 求取该真实框分别与9个先验框的IOU
         iou = []
         for i in range(3):
             anchors_xywh = np.zeros((3, 4))
@@ -325,8 +329,10 @@ def preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_
             iou_scale = bbox_iou_data(bbox_xywh_scaled[i][np.newaxis, :], anchors_xywh)
             iou.append(iou_scale)
         best_anchor_ind = np.argmax(np.array(iou).reshape(-1), axis=-1)
+        # 确定该真实框与9个先验框IOU最大的那个，属于哪个输出特征图，以及是该特征图中的第几个先验框
         best_detect = int(best_anchor_ind / 3)
         best_anchor = int(best_anchor_ind % 3)
+        # 取得真实框在该输出特征图中的中心坐标
         xind, yind = np.floor(bbox_xywh_scaled[best_detect, 0:2]).astype(np.int32)
         # 防止越界
         grid_r = label[best_detect].shape[0]
@@ -336,14 +342,15 @@ def preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_
         xind = min(xind, grid_r-1)
         yind = min(yind, grid_c-1)
         label[best_detect][yind, xind, best_anchor, :] = 0
-        label[best_detect][yind, xind, best_anchor, 0:4] = bbox_xywh
-        label[best_detect][yind, xind, best_anchor, 4:5] = 1.0
+        label[best_detect][yind, xind, best_anchor, 0:4] = bbox_xywh  # 真实框相对于输入网络图片尺寸的坐标
+        label[best_detect][yind, xind, best_anchor, 4:5] = 1.0        # 置信度标签是1，而不是IOU
         label[best_detect][yind, xind, best_anchor, 5:] = onehot
+        # 每个输出特征图中最多仅能有150个真实框
         bbox_ind = int(bbox_count[best_detect] % max_bbox_per_scale)
         bboxes_xywh[best_detect][bbox_ind, :4] = bbox_xywh
         bbox_count[best_detect] += 1
-    label_sbbox, label_mbbox, label_lbbox = label
-    sbboxes, mbboxes, lbboxes = bboxes_xywh
+    label_sbbox, label_mbbox, label_lbbox = label  # 记录着各个尺寸输出特征图对应的标签
+    sbboxes, mbboxes, lbboxes = bboxes_xywh  # 记录着各个尺寸输出特征图所有的bboxes坐标
     return label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
 
 
