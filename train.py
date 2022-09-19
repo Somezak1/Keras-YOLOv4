@@ -269,6 +269,8 @@ def parse_annotation(annotation, train_input_size, annotation_type):
         image, bboxes = random_horizontal_flip(np.copy(image), np.copy(bboxes))
         image, bboxes = random_crop(np.copy(image), np.copy(bboxes))
         image, bboxes = random_translate(np.copy(image), np.copy(bboxes))
+    # 将图片resize至指定的train_input_size，像素值统一除以255
+    # 将图片对应的bbox坐标也除以缩放比例（比例=原始尺寸/train_input_size）
     image, bboxes = image_preprocess(np.copy(image), [train_input_size, train_input_size], np.copy(bboxes))
     return image, bboxes, exist_boxes
 
@@ -302,7 +304,8 @@ def data_generator(annotation_lines, batch_size, anchors, num_classes, max_bbox_
         for num in range(batch_size):
             if i == 0:
                 np.random.shuffle(annotation_lines)
-
+            # 读取图片及bboxes位置，然后将图片resize至指定尺寸、数据增强、/255
+            # 将bboxes中的坐标也缩放至输入尺寸坐标系下
             image, bboxes, exist_boxes = parse_annotation(annotation_lines[i], train_input_size, annotation_type)
             label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = preprocess_true_boxes(bboxes, train_output_sizes, strides, num_classes, max_bbox_per_scale, anchors)
 
